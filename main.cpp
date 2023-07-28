@@ -24,8 +24,8 @@ void spawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength, flo
 		newEnemyPosY = rand() % WINDOW_HEIGHT;
 		spawnPointIsValid = true;
 		if (
-			*pPlayerPosX - 300 >= newEnemyPosX >= *pPlayerPosX + 300 ||
-			*pPlayerPosY - 300 >= newEnemyPosY >= *pPlayerPosY + 300
+			(newEnemyPosX >= *pPlayerPosX - 240 && newEnemyPosX <= *pPlayerPosX + 240) &&
+			(newEnemyPosY >= *pPlayerPosY - 240 && newEnemyPosY <= *pPlayerPosY + 240)
 			) spawnPointIsValid = false;
 	}
 	newEnemyPositions[*pEnemyPositionsLength] = { newEnemyPosX, newEnemyPosY };
@@ -44,14 +44,17 @@ struct SpawnEnemyCallbackParams {
 };
 
 Uint32 spawnEnemyCallback(Uint32 interval, void* param) {
-	spawnEnemy(
-		((SpawnEnemyCallbackParams*)param)->pEnemyPositions,
-		((SpawnEnemyCallbackParams*)param)->pEnemyPositionsLength,
-		((SpawnEnemyCallbackParams*)param)->pPlayerPosX,
-		((SpawnEnemyCallbackParams*)param)->pPlayerPosY
-	);
 	float currentPeak = *((SpawnEnemyCallbackParams*)param)->pCurrentPeak;
-	return 1 + 2000 * (1 - sqrt(currentPeak));
+	if (currentPeak != 0)
+	{
+		spawnEnemy(
+			((SpawnEnemyCallbackParams*)param)->pEnemyPositions,
+			((SpawnEnemyCallbackParams*)param)->pEnemyPositionsLength,
+			((SpawnEnemyCallbackParams*)param)->pPlayerPosX,
+			((SpawnEnemyCallbackParams*)param)->pPlayerPosY
+		);
+	}
+	return 1 + 2000 * (1 - sqrt(sqrt(currentPeak)));
 }
 
 void despawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength, int index) {
@@ -164,16 +167,26 @@ void main() {
 	float enemyWidth = 20;
 	float enemyMovX = 0;
 	float enemyMovY = 0;
-	float enemySpeed = 30;
+	float enemySpeed = 50;
 	// enemy spawning
 	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength, &currentPeak, &playerPosX, &playerPosY };
 	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(100, spawnEnemyCallback, &spawnEnemyCallbackParams);
 
 	// MAIN LOOP
 	bool isGameRunning = true;
+	bool gameReset = false;
 	SDL_Event event;
 	while (isGameRunning) {
-
+		if (gameReset == true) {
+			gameReset = false;
+			mainLoopUpdateDelay = 20;
+			enemyPositionsLength = 1;
+			delete[] enemyPositions;
+			enemyPositions = new EnemyPosition[enemyPositionsLength];
+			enemyPositions[0] = { -20, -20 };
+			playerPosX = WINDOW_WIDTH / 2;
+			playerPosY = WINDOW_HEIGHT / 2;
+		}
 		currentPeak = peakListener.getPeak();
 		// INPUT
 		{
@@ -275,8 +288,8 @@ void main() {
 				float minDistance = playerWidth / 2 + enemyWidth / 2;
 				if (distance < minDistance) {
 					printf("YOU ARE DEAD\n");
+					gameReset = true;
 					mainLoopUpdateDelay = 3000;
-					isGameRunning = false;
 				}
 			}
 		}
@@ -294,7 +307,7 @@ void main() {
 				drawingRect.h = enemyWidth;
 				drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
 				drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
-				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255 * currentPeak);
+				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255 * pow(currentPeak, 3));
 				SDL_RenderDrawRect(pRenderer, &drawingRect);
 				SDL_RenderFillRect(pRenderer, &drawingRect);
 			}
