@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include "peak_listener.hpp"
+#include <iostream>
+#include "math.h"
 #include "SDL.h"
 #undef main
 
@@ -8,16 +10,26 @@ const int WINDOW_HEIGHT = 900;
 
 struct EnemyPosition { float posX; float posY; };
 
-void spawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength) {
+void spawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength, float* pPlayerPosX, float* pPlayerPosY) {
 	EnemyPosition* newEnemyPositions;
 	newEnemyPositions = new EnemyPosition[*pEnemyPositionsLength + 1];
 	for (int i = 0; i < *pEnemyPositionsLength; i++) {
 		newEnemyPositions[i] = *(*pEnemyPositions + i);
 	}
-	float newEnemyPosX = rand() % WINDOW_WIDTH;
-	float newEnemyPosY = rand() % WINDOW_HEIGHT;
+	bool spawnPointIsValid = false;
+	float newEnemyPosX;
+	float newEnemyPosY;
+	while (!spawnPointIsValid) {
+		newEnemyPosX = rand() % WINDOW_WIDTH;
+		newEnemyPosY = rand() % WINDOW_HEIGHT;
+		spawnPointIsValid = true;
+		if (
+			*pPlayerPosX - 300 >= newEnemyPosX >= *pPlayerPosX + 300 ||
+			*pPlayerPosY - 300 >= newEnemyPosY >= *pPlayerPosY + 300
+			) spawnPointIsValid = false;
+	}
 	newEnemyPositions[*pEnemyPositionsLength] = { newEnemyPosX, newEnemyPosY };
-
+	
 	delete[] *pEnemyPositions;
 	*pEnemyPositions = newEnemyPositions;
 	*pEnemyPositionsLength += 1;
@@ -26,11 +38,20 @@ void spawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength) {
 struct SpawnEnemyCallbackParams {
 	EnemyPosition** pEnemyPositions;
 	int* pEnemyPositionsLength;
+	float* pCurrentPeak;
+	float* pPlayerPosX;
+	float* pPlayerPosY;
 };
 
 Uint32 spawnEnemyCallback(Uint32 interval, void* param) {
-	spawnEnemy(((SpawnEnemyCallbackParams*)param)->pEnemyPositions, ((SpawnEnemyCallbackParams*)param)->pEnemyPositionsLength);
-	return interval;
+	spawnEnemy(
+		((SpawnEnemyCallbackParams*)param)->pEnemyPositions,
+		((SpawnEnemyCallbackParams*)param)->pEnemyPositionsLength,
+		((SpawnEnemyCallbackParams*)param)->pPlayerPosX,
+		((SpawnEnemyCallbackParams*)param)->pPlayerPosY
+	);
+	float currentPeak = *((SpawnEnemyCallbackParams*)param)->pCurrentPeak;
+	return 1 + 2000 * (1 - sqrt(currentPeak));
 }
 
 void despawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength, int index) {
@@ -50,32 +71,40 @@ struct Point {
 	float y;
 };
 
-Point* intersection(Point p1, Point p2, Point p3, Point p4) {
+bool intersection(Point p1, Point p2, Point p3, Point p4) {
 	// Store the values for fast access and easy
+
 	// equations-to-code conversion
+
 	float x1 = p1.x, x2 = p2.x, x3 = p3.x, x4 = p4.x;
 	float y1 = p1.y, y2 = p2.y, y3 = p3.y, y4 = p4.y;
 
-	float d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+	float d = (x1 - x2) * (y3 - y4) -(y1 - y2) * (x3 - x4);
 	// If d is zero, there is no intersection
-	if (d == 0) return NULL;
+
+	if (d == 0) return false;
 
 	// Get the x and y
+
 	float pre = (x1 * y2 - y1 * x2), post = (x3 * y4 - y3 * x4);
-	float x = (pre * (x3 - x4) - (x1 - x2) * post) / d;
-	float y = (pre * (y3 - y4) - (y1 - y2) * post) / d;
+
+	float x = (pre * (x3 - x4) -(x1 - x2) * post) / d;
+	float y = (pre * (y3 - y4) -(y1 - y2) * post) / d;
 
 	// Check if the x and y coordinates are within both lines
-	if (x < min(x1, x2) || x > max(x1, x2) ||
-		x < min(x3, x4) || x > max(x3, x4)) return NULL;
-	if (y < min(y1, y2) || y > max(y1, y2) ||
-		y < min(y3, y4) || y > max(y3, y4)) return NULL;
+	float epsilon = 0.001;
+	if (x < (min(x1, x2) - epsilon) ||
+		x > (max(x1, x2) + epsilon) ||
+		x < (min(x3, x4) - epsilon) ||
+		x > (max(x3, x4) + epsilon))
+		return false;
+	if (y < (min(y1, y2) - epsilon) ||
+		y > (max(y1, y2) + epsilon) ||
+		y < (min(y3, y4) - epsilon) ||
+		y > (max(y3, y4) + epsilon))
+		return false;
 
-	// Return the point of intersection
-	Point* ret = new Point();
-	ret->x = x;
-	ret->y = y;
-	return ret;
+	return true;
 }
 
 bool isEnemySideIntersectingWithDash(
@@ -102,6 +131,7 @@ void main() {
 	// SETUP
 	// window setup
 	PeakListener peakListener = PeakListener();
+	float currentPeak = 0;
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_Window* pWindow = SDL_CreateWindow("music slasher", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 	SDL_Renderer* pRenderer = SDL_CreateRenderer(pWindow, -1, 0);
@@ -117,6 +147,7 @@ void main() {
 	const Uint8* keyboardState = SDL_GetKeyboardState(NULL);
 
 	// entities setup
+	// player
 	float playerPosX = WINDOW_WIDTH / 2;
 	float playerPosY = WINDOW_HEIGHT / 2;
 	float playerWidth = 20;
@@ -125,22 +156,25 @@ void main() {
 	int playerMovY = 0;
 	float playerDashPower = 120;
 	bool isPlayerDashing = false;
-
+	// enemies
 	EnemyPosition* enemyPositions;
 	int enemyPositionsLength = 1;
 	enemyPositions = new EnemyPosition[enemyPositionsLength];
 	enemyPositions[0] = { -20, -20 };	// first enemy position in the array is just for keeping the array non-empty!! don`t interact with it
-	EnemyPosition* newEnemyPositions;
 	float enemyWidth = 20;
+	float enemyMovX = 0;
+	float enemyMovY = 0;
+	float enemySpeed = 30;
 	// enemy spawning
-	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength };
-	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(1000, spawnEnemyCallback, &spawnEnemyCallbackParams);
+	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength, &currentPeak, &playerPosX, &playerPosY };
+	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(100, spawnEnemyCallback, &spawnEnemyCallbackParams);
 
 	// MAIN LOOP
 	bool isGameRunning = true;
 	SDL_Event event;
 	while (isGameRunning) {
 
+		currentPeak = peakListener.getPeak();
 		// INPUT
 		{
 			while (SDL_PollEvent(&event)) {
@@ -222,6 +256,19 @@ void main() {
 			}
 		}
 		{
+			// process enemies movement
+			for (int i = 1; i < enemyPositionsLength; i++) {
+				EnemyPosition enemyPos = enemyPositions[i];
+				enemyMovX = playerPosX - enemyPos.posX;
+				enemyMovY = playerPosY - enemyPos.posY;
+				float length = sqrt(enemyMovX * enemyMovX + enemyMovY * enemyMovY); //Pythagorean theorem to get length
+				enemyMovX /= length; //divide each dimension by the length, that will make the new length equal one
+				enemyMovY /= length;
+				enemyPositions[i].posX += enemyMovX * enemySpeed * pow(currentPeak, 4);
+				enemyPositions[i].posY += enemyMovY * enemySpeed * pow(currentPeak, 4);
+			}
+		}
+		{
 			// process collisions
 			for (int i = 1; i < enemyPositionsLength; i++) {
 				float distance = sqrt(pow((playerPosX - enemyPositions[i].posX), 2) + pow((playerPosY - enemyPositions[i].posY), 2));
@@ -247,7 +294,7 @@ void main() {
 				drawingRect.h = enemyWidth;
 				drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
 				drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
-				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255);
+				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255 * currentPeak);
 				SDL_RenderDrawRect(pRenderer, &drawingRect);
 				SDL_RenderFillRect(pRenderer, &drawingRect);
 			}
