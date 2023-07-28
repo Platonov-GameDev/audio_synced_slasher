@@ -39,15 +39,11 @@ void main() {
 	PeakListener peakListener = PeakListener();
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_Window* pWindow = SDL_CreateWindow("music slasher", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-	SDL_Surface* pSurface = SDL_GetWindowSurface(pWindow);
-	SDL_Surface* pBufferSurface = SDL_CreateRGBSurface(0, 640, 640, 32, 0, 0, 0, 0);
-	int sdlUpdateDelay = 20;
+	SDL_Renderer* pRenderer = SDL_CreateRenderer(pWindow, -1, 0);
+	int mainLoopUpdateDelay = 20;
 
 	// drawing setup
-	SDL_Rect drawing_rect;
-	Uint32 black_pixel = SDL_MapRGB(pSurface->format, 0, 0, 0);
-	Uint32 white_pixel = SDL_MapRGB(pSurface->format, 255, 255, 255);
-	Uint32 red_pixel = SDL_MapRGB(pSurface->format, 255, 0, 0);
+	SDL_Rect drawingRect;
 
 	// input setup
 	const Uint8* keyboardState = SDL_GetKeyboardState(NULL);
@@ -57,7 +53,6 @@ void main() {
 	float playerPosY = WINDOW_HEIGHT / 2;
 	float playerWidth = 20;
 	float playerSpeed = 5;
-	SDL_Color player_color = { 255, 255, 255, 255 };
 
 	EnemyPosition* enemyPositions;
 	int enemyPositionsLength = 1;
@@ -65,7 +60,6 @@ void main() {
 	enemyPositions[0] = { -20, -20 };	// first enemy position in the array is just for keeping the array non-empty!! don`t interact with it
 	EnemyPosition* newEnemyPositions;
 	float enemyWidth = 20;
-	SDL_Color enemy_color = { 255, 0, 0, 255 };
 	// enemy spawning
 	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength };
 	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(1000, spawnEnemyCallback, &spawnEnemyCallbackParams);
@@ -96,37 +90,42 @@ void main() {
 			float minDistance = playerWidth / 2 + enemyWidth / 2;
 			if (distance < minDistance) {
 				printf("YOU ARE DEAD\n");
-				sdlUpdateDelay = 3000;
+				mainLoopUpdateDelay = 3000;
 				isGameRunning = false;
 			}
 		}
 
 		// RENDERING
-		SDL_FillRect(pBufferSurface, NULL, black_pixel);
+		// clear screen
+		SDL_SetRenderDrawColor(pRenderer, 0, 0, 0, 255);
+		SDL_RenderClear(pRenderer);
 		// draw player
-		drawing_rect.w = playerWidth;
-		drawing_rect.h = playerWidth;
-		drawing_rect.x = playerPosX - (playerWidth / 2);
-		drawing_rect.y = playerPosY - (playerWidth / 2);
-		SDL_FillRect(pBufferSurface, &drawing_rect, white_pixel);
+		drawingRect.w = playerWidth;
+		drawingRect.h = playerWidth;
+		drawingRect.x = playerPosX - (playerWidth / 2);
+		drawingRect.y = playerPosY - (playerWidth / 2);
+		SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255);
+		SDL_RenderDrawRect(pRenderer, &drawingRect);
+		SDL_RenderFillRect(pRenderer, &drawingRect);
 		// draw enemies
 		for (int i = 1; i < enemyPositionsLength; i++) {
-			drawing_rect.w = enemyWidth;
-			drawing_rect.h = enemyWidth;
-			drawing_rect.x = enemyPositions[i].posX - (enemyWidth / 2);
-			drawing_rect.y = enemyPositions[i].posY - (enemyWidth / 2);
-			SDL_FillRect(pBufferSurface, &drawing_rect, red_pixel);
+			drawingRect.w = enemyWidth;
+			drawingRect.h = enemyWidth;
+			drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
+			drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
+			SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255);
+			SDL_RenderDrawRect(pRenderer, &drawingRect);
+			SDL_RenderFillRect(pRenderer, &drawingRect);
 		}
 
-		SDL_BlitSurface(pBufferSurface, NULL, pSurface, NULL);
-		SDL_UpdateWindowSurface(pWindow);
+		SDL_RenderPresent(pRenderer);
 
-		SDL_Delay(sdlUpdateDelay);
+		SDL_Delay(mainLoopUpdateDelay);
 	}
 
 	// cleanup
 	SDL_RemoveTimer(enemySpawnTimerID);
-	SDL_FreeSurface(pBufferSurface);
+	SDL_DestroyRenderer(pRenderer);
 	SDL_DestroyWindow(pWindow);
 	SDL_Quit();
 }
