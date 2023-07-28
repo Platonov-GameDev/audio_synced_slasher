@@ -3,8 +3,8 @@
 #include "SDL.h"
 #undef main
 
-const int WINDOW_WIDTH = 640;
-const int WINDOW_HEIGHT = 640;
+const int WINDOW_WIDTH = 900;
+const int WINDOW_HEIGHT = 900;
 
 struct EnemyPosition { float posX; float posY; };
 
@@ -33,7 +33,72 @@ Uint32 spawnEnemyCallback(Uint32 interval, void* param) {
 	return interval;
 }
 
+void despawnEnemy(EnemyPosition** pEnemyPositions, int* pEnemyPositionsLength, int index) {
+	EnemyPosition* newEnemyPositions;
+	newEnemyPositions = new EnemyPosition[*pEnemyPositionsLength + 1];
+	for (int i = 0; i < *pEnemyPositionsLength - 1; i++) {
+		if (i >= index) newEnemyPositions[i] = *(*pEnemyPositions + i + 1);
+		else newEnemyPositions[i] = *(*pEnemyPositions + i);
+	}
+	delete[] * pEnemyPositions;
+	*pEnemyPositions = newEnemyPositions;
+	*pEnemyPositionsLength -= 1;
+}
+
+struct Point {
+	float x;
+	float y;
+};
+
+Point* intersection(Point p1, Point p2, Point p3, Point p4) {
+	// Store the values for fast access and easy
+	// equations-to-code conversion
+	float x1 = p1.x, x2 = p2.x, x3 = p3.x, x4 = p4.x;
+	float y1 = p1.y, y2 = p2.y, y3 = p3.y, y4 = p4.y;
+
+	float d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+	// If d is zero, there is no intersection
+	if (d == 0) return NULL;
+
+	// Get the x and y
+	float pre = (x1 * y2 - y1 * x2), post = (x3 * y4 - y3 * x4);
+	float x = (pre * (x3 - x4) - (x1 - x2) * post) / d;
+	float y = (pre * (y3 - y4) - (y1 - y2) * post) / d;
+
+	// Check if the x and y coordinates are within both lines
+	if (x < min(x1, x2) || x > max(x1, x2) ||
+		x < min(x3, x4) || x > max(x3, x4)) return NULL;
+	if (y < min(y1, y2) || y > max(y1, y2) ||
+		y < min(y3, y4) || y > max(y3, y4)) return NULL;
+
+	// Return the point of intersection
+	Point* ret = new Point();
+	ret->x = x;
+	ret->y = y;
+	return ret;
+}
+
+bool isEnemySideIntersectingWithDash(
+	float playerPosX, float playerPosY, float playerWidth, float aimingPosX, float aimingPosY, Point sidePoint1, Point sidePoint2
+) {
+	Point dashStartPoint1 = { playerPosX + (playerWidth / 2), playerPosY + (playerWidth / 2) };
+	Point dashStartPoint2 = { playerPosX + (playerWidth / 2), playerPosY - (playerWidth / 2) };
+	Point dashStartPoint3 = { playerPosX - (playerWidth / 2), playerPosY + (playerWidth / 2) };
+	Point dashStartPoint4 = { playerPosX - (playerWidth / 2), playerPosY - (playerWidth / 2) };
+	Point dashEndPoint1 = { aimingPosX + (playerWidth / 2), aimingPosY + (playerWidth / 2) };
+	Point dashEndPoint2 = { aimingPosX + (playerWidth / 2), aimingPosY - (playerWidth / 2) };
+	Point dashEndPoint3 = { aimingPosX - (playerWidth / 2), aimingPosY + (playerWidth / 2) };
+	Point dashEndPoint4 = { aimingPosX - (playerWidth / 2), aimingPosY - (playerWidth / 2) };
+	bool intersects = false;
+	if (intersection(dashStartPoint1, dashEndPoint1, sidePoint1, sidePoint2)) intersects = true;
+	if (intersection(dashStartPoint2, dashEndPoint2, sidePoint1, sidePoint2)) intersects = true;
+	if (intersection(dashStartPoint3, dashEndPoint3, sidePoint1, sidePoint2)) intersects = true;
+	if (intersection(dashStartPoint4, dashEndPoint4, sidePoint1, sidePoint2)) intersects = true;
+	return intersects;
+}
+
 void main() {
+
 	// SETUP
 	// window setup
 	PeakListener peakListener = PeakListener();
@@ -44,6 +109,9 @@ void main() {
 
 	// drawing setup
 	SDL_Rect drawingRect;
+	float aimingPosX = 0;
+	float aimingPosY = 0;
+	SDL_SetRenderDrawBlendMode(pRenderer, SDL_BLENDMODE_BLEND);
 
 	// input setup
 	const Uint8* keyboardState = SDL_GetKeyboardState(NULL);
@@ -53,6 +121,10 @@ void main() {
 	float playerPosY = WINDOW_HEIGHT / 2;
 	float playerWidth = 20;
 	float playerSpeed = 5;
+	int playerMovX = 0;
+	int playerMovY = 0;
+	float playerDashPower = 120;
+	bool isPlayerDashing = false;
 
 	EnemyPosition* enemyPositions;
 	int enemyPositionsLength = 1;
@@ -70,52 +142,130 @@ void main() {
 	while (isGameRunning) {
 
 		// INPUT
-		while (SDL_PollEvent(&event)) {
-			switch (event.type) {
-			case SDL_QUIT:
-				isGameRunning = false;
+		{
+			while (SDL_PollEvent(&event)) {
+				switch (event.type) {
+				// exit input
+				case SDL_QUIT:
+					isGameRunning = false;
+				case SDL_KEYDOWN:
+					if(event.key.keysym.scancode == SDL_SCANCODE_SPACE) isPlayerDashing = true;
+				}
 			}
 		}
-		// player movement
-		SDL_PumpEvents();
-		if (keyboardState[SDL_SCANCODE_UP]) playerPosY -= playerSpeed;
-		if (keyboardState[SDL_SCANCODE_DOWN]) playerPosY += playerSpeed;
-		if (keyboardState[SDL_SCANCODE_LEFT]) playerPosX -= playerSpeed;
-		if (keyboardState[SDL_SCANCODE_RIGHT]) playerPosX += playerSpeed;
+		{
+			// player input
+			SDL_PumpEvents();
+			playerMovX = 0;
+			playerMovY = 0;
+			if (keyboardState[SDL_SCANCODE_W] | keyboardState[SDL_SCANCODE_UP]) playerMovY--;
+			if (keyboardState[SDL_SCANCODE_S] | keyboardState[SDL_SCANCODE_DOWN]) playerMovY++;
+			if (keyboardState[SDL_SCANCODE_A] | keyboardState[SDL_SCANCODE_LEFT]) playerMovX--;
+			if (keyboardState[SDL_SCANCODE_D] | keyboardState[SDL_SCANCODE_RIGHT]) playerMovX++;
+		}
 		
 		// PROCESSING
-		// collisions
-		for (int i = 0; i < enemyPositionsLength; i++) {
-			float distance = sqrt(pow((playerPosX - enemyPositions[i].posX), 2) + pow((playerPosY - enemyPositions[i].posY), 2));
-			float minDistance = playerWidth / 2 + enemyWidth / 2;
-			if (distance < minDistance) {
-				printf("YOU ARE DEAD\n");
-				mainLoopUpdateDelay = 3000;
-				isGameRunning = false;
+		{
+			// process dash collisions
+			if (isPlayerDashing) {
+				for (int i = 1; i < enemyPositionsLength; i++) {
+					EnemyPosition enemyPos = enemyPositions[i];
+					bool isEnemyHit = false;
+					// top side
+					Point enemyTopPoint1 = { enemyPos.posX - (enemyWidth / 2), enemyPos.posY + (enemyWidth / 2) };
+					Point enemyTopPoint2 = { enemyPos.posX + (enemyWidth / 2), enemyPos.posY + (enemyWidth / 2) };
+					if (isEnemySideIntersectingWithDash(
+						playerPosX,playerPosY,playerWidth, aimingPosX, aimingPosY, enemyTopPoint1, enemyTopPoint2
+					)) isEnemyHit = true;
+					// bot side
+					Point enemyBotPoint1 = { enemyPos.posX - (enemyWidth / 2), enemyPos.posY - (enemyWidth / 2) };
+					Point enemyBotPoint2 = { enemyPos.posX + (enemyWidth / 2), enemyPos.posY - (enemyWidth / 2) };
+					if (isEnemySideIntersectingWithDash(
+						playerPosX, playerPosY, playerWidth, aimingPosX, aimingPosY, enemyBotPoint1, enemyBotPoint2
+					)) isEnemyHit = true;
+					// left side
+					Point enemyLeftPoint1 = { enemyPos.posX - (enemyWidth / 2), enemyPos.posY + (enemyWidth / 2) };
+					Point enemyLeftPoint2 = { enemyPos.posX - (enemyWidth / 2), enemyPos.posY - (enemyWidth / 2) };
+					if (isEnemySideIntersectingWithDash(
+						playerPosX, playerPosY, playerWidth, aimingPosX, aimingPosY, enemyLeftPoint1, enemyLeftPoint2
+					)) isEnemyHit = true;
+					// right side
+					Point enemyRightPoint1 = { enemyPos.posX + (enemyWidth / 2), enemyPos.posY + (enemyWidth / 2) };
+					Point enemyRightPoint2 = { enemyPos.posX + (enemyWidth / 2), enemyPos.posY - (enemyWidth / 2) };
+					if (isEnemySideIntersectingWithDash(
+						playerPosX, playerPosY, playerWidth, aimingPosX, aimingPosY, enemyRightPoint1, enemyRightPoint2
+					)) isEnemyHit = true;
+					// result
+					if (isEnemyHit) {
+						despawnEnemy(&enemyPositions, &enemyPositionsLength, i);
+						i--;
+					}
+				}
+			}
+		}
+		{
+			// process player movement
+			playerPosX += playerMovX * playerSpeed;
+			playerPosY += playerMovY * playerSpeed;
+		}
+		{
+			// process player aiming
+			aimingPosX = playerPosX + playerDashPower * playerMovX;
+			aimingPosY = playerPosY + playerDashPower * playerMovY;
+		}
+		{
+			// process player dashing
+			if (isPlayerDashing) {
+				isPlayerDashing = false;
+				playerPosX += playerMovX * playerDashPower;
+				playerPosY += playerMovY * playerDashPower;
+			}
+		}
+		{
+			// process collisions
+			for (int i = 1; i < enemyPositionsLength; i++) {
+				float distance = sqrt(pow((playerPosX - enemyPositions[i].posX), 2) + pow((playerPosY - enemyPositions[i].posY), 2));
+				float minDistance = playerWidth / 2 + enemyWidth / 2;
+				if (distance < minDistance) {
+					printf("YOU ARE DEAD\n");
+					mainLoopUpdateDelay = 3000;
+					isGameRunning = false;
+				}
 			}
 		}
 
 		// RENDERING
-		// clear screen
-		SDL_SetRenderDrawColor(pRenderer, 0, 0, 0, 255);
-		SDL_RenderClear(pRenderer);
-		// draw player
-		drawingRect.w = playerWidth;
-		drawingRect.h = playerWidth;
-		drawingRect.x = playerPosX - (playerWidth / 2);
-		drawingRect.y = playerPosY - (playerWidth / 2);
-		SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255);
-		SDL_RenderDrawRect(pRenderer, &drawingRect);
-		SDL_RenderFillRect(pRenderer, &drawingRect);
-		// draw enemies
-		for (int i = 1; i < enemyPositionsLength; i++) {
-			drawingRect.w = enemyWidth;
-			drawingRect.h = enemyWidth;
-			drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
-			drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
-			SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255);
+		{
+			// clear screen
+			SDL_SetRenderDrawColor(pRenderer, 0, 0, 0, 255);
+			SDL_RenderClear(pRenderer);
+		}
+		{
+			// draw enemies
+			for (int i = 1; i < enemyPositionsLength; i++) {
+				drawingRect.w = enemyWidth;
+				drawingRect.h = enemyWidth;
+				drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
+				drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
+				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255);
+				SDL_RenderDrawRect(pRenderer, &drawingRect);
+				SDL_RenderFillRect(pRenderer, &drawingRect);
+			}
+		}
+		{
+			// draw player
+			drawingRect.w = playerWidth;
+			drawingRect.h = playerWidth;
+			drawingRect.x = playerPosX - (playerWidth / 2);
+			drawingRect.y = playerPosY - (playerWidth / 2);
+			SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255);
 			SDL_RenderDrawRect(pRenderer, &drawingRect);
 			SDL_RenderFillRect(pRenderer, &drawingRect);
+		}
+		{
+			// draw dash aiming
+			SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 50);
+			SDL_RenderDrawLineF(pRenderer, playerPosX, playerPosY, aimingPosX, aimingPosY);
 		}
 
 		SDL_RenderPresent(pRenderer);
