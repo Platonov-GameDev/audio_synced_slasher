@@ -129,6 +129,44 @@ bool isEnemySideIntersectingWithDash(
 	return intersects;
 }
 
+void drawCircle(SDL_Renderer* renderer, int32_t centreX, int32_t centreY, int32_t radius)
+{
+	const int32_t diameter = (radius * 2);
+
+	int32_t x = (radius - 1);
+	int32_t y = 0;
+	int32_t tx = 1;
+	int32_t ty = 1;
+	int32_t error = (tx - diameter);
+
+	while (x >= y)
+	{
+		//  Each of the following renders an octant of the circle
+		SDL_RenderDrawPoint(renderer, centreX + x, centreY - y);
+		SDL_RenderDrawPoint(renderer, centreX + x, centreY + y);
+		SDL_RenderDrawPoint(renderer, centreX - x, centreY - y);
+		SDL_RenderDrawPoint(renderer, centreX - x, centreY + y);
+		SDL_RenderDrawPoint(renderer, centreX + y, centreY - x);
+		SDL_RenderDrawPoint(renderer, centreX + y, centreY + x);
+		SDL_RenderDrawPoint(renderer, centreX - y, centreY - x);
+		SDL_RenderDrawPoint(renderer, centreX - y, centreY + x);
+
+		if (error <= 0)
+		{
+			++y;
+			error += ty;
+			ty += 2;
+		}
+
+		if (error > 0)
+		{
+			--x;
+			tx += 2;
+			error += (tx - diameter);
+		}
+	}
+}
+
 void main() {
 
 	// SETUP
@@ -167,7 +205,7 @@ void main() {
 	float enemyWidth = 20;
 	float enemyMovX = 0;
 	float enemyMovY = 0;
-	float enemySpeed = 30;
+	float enemySpeed = 20;
 	// enemy spawning
 	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength, &currentPeak, &playerPosX, &playerPosY };
 	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(100, spawnEnemyCallback, &spawnEnemyCallbackParams);
@@ -188,6 +226,7 @@ void main() {
 			playerPosY = WINDOW_HEIGHT / 2;
 		}
 		currentPeak = peakListener.getPeak();
+		playerDashPower = 360 * pow(currentPeak, 2);
 		// INPUT
 		{
 			while (SDL_PollEvent(&event)) {
@@ -275,14 +314,13 @@ void main() {
 				enemyMovX = playerPosX - enemyPos.posX;
 				enemyMovY = playerPosY - enemyPos.posY;
 				float length = sqrt(enemyMovX * enemyMovX + enemyMovY * enemyMovY);
-				std::cout << enemyMovX << enemyMovY << '\n';
 				switch (abs(enemyMovX) >= abs(enemyMovY)) {
 					case true: {
 						enemyMovX /= length;
 						enemyPositions[i].posX += enemyMovX * enemySpeed * pow(currentPeak, 3);
 					}
 					case false: {
-				enemyMovY /= length;
+						enemyMovY /= length;
 						enemyPositions[i].posY += enemyMovY * enemySpeed * pow(currentPeak, 3);
 					}
 				}
@@ -328,6 +366,7 @@ void main() {
 			SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255);
 			SDL_RenderDrawRect(pRenderer, &drawingRect);
 			SDL_RenderFillRect(pRenderer, &drawingRect);
+			drawCircle(pRenderer, playerPosX, playerPosY, playerDashPower);
 		}
 		{
 			// draw dash aiming
