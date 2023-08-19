@@ -275,11 +275,18 @@ void main() {
 				EnemyPosition enemyPos = enemyPositions[i];
 				enemyMovX = playerPosX - enemyPos.posX;
 				enemyMovY = playerPosY - enemyPos.posY;
-				float length = sqrt(enemyMovX * enemyMovX + enemyMovY * enemyMovY); //Pythagorean theorem to get length
-				enemyMovX /= length; //divide each dimension by the length, that will make the new length equal one
+				float length = sqrt(enemyMovX * enemyMovX + enemyMovY * enemyMovY);
+				std::cout << enemyMovX << enemyMovY << '\n';
+				switch (abs(enemyMovX) >= abs(enemyMovY)) {
+					case true: {
+						enemyMovX /= length;
+						enemyPositions[i].posX += enemyMovX * enemySpeed * pow(currentPeak, 3);
+					}
+					case false: {
 				enemyMovY /= length;
-				enemyPositions[i].posX += enemyMovX * enemySpeed * pow(currentPeak, 4);
-				enemyPositions[i].posY += enemyMovY * enemySpeed * pow(currentPeak, 4);
+						enemyPositions[i].posY += enemyMovY * enemySpeed * pow(currentPeak, 3);
+					}
+				}
 			}
 		}
 		{
