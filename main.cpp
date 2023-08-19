@@ -138,7 +138,6 @@ void main() {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_Window* pWindow = SDL_CreateWindow("music slasher", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 	SDL_Renderer* pRenderer = SDL_CreateRenderer(pWindow, -1, 0);
-	int mainLoopUpdateDelay = 20;
 
 	// drawing setup
 	int mainLoopUpdateDelay = 20;
