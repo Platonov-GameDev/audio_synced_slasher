@@ -141,6 +141,7 @@ void main() {
 	int mainLoopUpdateDelay = 20;
 
 	// drawing setup
+	int mainLoopUpdateDelay = 20;
 	SDL_Rect drawingRect;
 	float aimingPosX = 0;
 	float aimingPosY = 0;
@@ -167,7 +168,7 @@ void main() {
 	float enemyWidth = 20;
 	float enemyMovX = 0;
 	float enemyMovY = 0;
-	float enemySpeed = 50;
+	float enemySpeed = 30;
 	// enemy spawning
 	SpawnEnemyCallbackParams spawnEnemyCallbackParams = { &enemyPositions, &enemyPositionsLength, &currentPeak, &playerPosX, &playerPosY };
 	SDL_TimerID enemySpawnTimerID = SDL_AddTimer(100, spawnEnemyCallback, &spawnEnemyCallbackParams);
@@ -307,7 +308,7 @@ void main() {
 				drawingRect.h = enemyWidth;
 				drawingRect.x = enemyPositions[i].posX - (enemyWidth / 2);
 				drawingRect.y = enemyPositions[i].posY - (enemyWidth / 2);
-				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255 * pow(currentPeak, 3));
+				SDL_SetRenderDrawColor(pRenderer, 255, 0, 0, 255 * pow(currentPeak, 2));
 				SDL_RenderDrawRect(pRenderer, &drawingRect);
 				SDL_RenderFillRect(pRenderer, &drawingRect);
 			}
